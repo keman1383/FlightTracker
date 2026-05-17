@@ -749,15 +749,7 @@ async function refreshAll() {
 
   // Only fetch for flights that haven't landed
   const now = new Date();
-const toFetch = flights.filter(f => {
-  if (landedIds.has(f.id)) return false;
-  if (!f.departs) return true; // no time set — always fetch
-  const [hh, mm] = f.departs.split(':').map(Number);
-  const dep = new Date();
-  dep.setHours(hh, mm, 0, 0);
-  const minsUntil = (dep - now) / 60000;
-  return minsUntil <= 120; // only fetch within 2 hours
-});
+const toFetch = flights.filter(f => !landedIds.has(f.id));
   if (toFetch.length === 0) {
     renderFlights();
     return;
