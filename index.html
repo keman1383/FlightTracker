@@ -559,6 +559,10 @@
         color:var(--muted);letter-spacing:2px;
       "></div>
     </div>
+    <div class="form-group">
+  <label>Scheduled Departure</label>
+  <input type="time" id="f-departs">
+</div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-save" onclick="addFlight()">Save Flight</button>
@@ -660,6 +664,7 @@ function statusClass(status) {
     'delayed':   'status-delayed',
     'cancelled': 'status-cancelled',
     'landed':    'status-landed',
+    'waiting': 'status-scheduled',
   };
   return map[status] || 'status-scheduled';
 }
@@ -674,6 +679,7 @@ function statusLabel(status, delay) {
     'delayed':   'DELAYED',
     'cancelled': 'CANCELLED',
     'landed':    'LANDED',
+    'waiting': 'WAITING',
   };
   return labels[status] || status.toUpperCase();
 }
@@ -693,7 +699,15 @@ function renderFlights() {
   }
 
   list.innerHTML = flights.map(f => {
-    const live    = liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 };
+    const now = new Date();
+const withinWindow = !f.departs || (() => {
+  const [hh, mm] = f.departs.split(':').map(Number);
+  const dep = new Date(); dep.setHours(hh, mm, 0, 0);
+  return (dep - now) / 60000 <= 120;
+})();
+const live = withinWindow
+  ? (liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 })
+  : { status: 'waiting', gate: '—', delay: 0 };
     const sc      = statusClass(live.status);
     const sl      = statusLabel(live.status, live.delay);
     const gate    = live.gate || '—';
@@ -719,7 +733,16 @@ async function refreshAll() {
   if (isRefreshing) return;
 
   // Only fetch for flights that haven't landed
-  const toFetch = flights.filter(f => !landedIds.has(f.id));
+  const now = new Date();
+const toFetch = flights.filter(f => {
+  if (landedIds.has(f.id)) return false;
+  if (!f.departs) return true; // no time set — always fetch
+  const [hh, mm] = f.departs.split(':').map(Number);
+  const dep = new Date();
+  dep.setHours(hh, mm, 0, 0);
+  const minsUntil = (dep - now) / 60000;
+  return minsUntil <= 120; // only fetch within 2 hours
+});
   if (toFetch.length === 0) {
     renderFlights();
     return;
@@ -815,8 +838,8 @@ function addFlight() {
   if (!num)     { numEl.style.borderColor     = 'var(--red)'; valid = false; }
   if (!valid) return;
 
-  const flight = { id: Date.now().toString(), label, number: `${airline}${num}` };
-  flights.push(flight);
+  const departs = document.getElementById('f-departs').value; // "HH:MM" or ""
+const flight = { id: Date.now().toString(), label, number: `${airline}${num}`, departs };  flights.push(flight);
   saveFlights(flights);
   closeModal();
   renderFlights();
@@ -840,6 +863,7 @@ function openModal() {
   document.getElementById('f-number').value  = '';
   document.getElementById('airline-preview').textContent        = '—';
   document.getElementById('flight-preview-line').textContent    = '';
+  document.getElementById('f-departs').value = '';
   ['f-label','f-airline','f-number'].forEach(id =>
     document.getElementById(id).style.borderColor = ''
   );
