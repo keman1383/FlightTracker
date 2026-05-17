@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLIGHTWATCH</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111418;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --accent-dim: #7a5010;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --yellow: #facc15;
+    --text: #d4dbe8;
+    --muted: #4a5568;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .logo {
+    font-family: var(--sans);
+    font-weight: 900;
+    font-size: 28px;
+    letter-spacing: 8px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .logo span {
+    color: var(--text);
+    opacity: 0.3;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  #clock {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  .btn-add {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 8px 20px;
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-add:hover { background: #f5b840; }
+
+  .btn-refresh {
+    background: none;
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    padding: 8px 18px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-refresh:hover { border-color: var(--accent); background: rgba(232,160,32,0.08); }
+  .btn-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-refresh .spin { display: inline-block; }
+  .btn-refresh.loading .spin { animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* Board header */
+  .board-header {
+    display: grid;
+    grid-template-columns: 1fr 130px 110px 130px 48px;
+    gap: 0;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--accent-dim);
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 16px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: 1px dashed var(--border);
+  }
+
+  .empty-state .big {
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--border);
+    display: block;
+    margin-bottom: 12px;
+    letter-spacing: 4px;
+  }
+
+  /* Flight row */
+  .flight-row {
+    display: grid;
+    grid-template-columns: 1fr 130px 110px 130px 48px;
+    gap: 0;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    margin-bottom: 3px;
+    position: relative;
+    transition: background 0.2s;
+    animation: rowIn 0.3s ease;
+  }
+
+  @keyframes rowIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .flight-row:hover { background: #161b23; }
+
+  .flight-row.updating .flight-status {
+    animation: flip 0.4s ease;
+  }
+
+  @keyframes flip {
+    0% { transform: rotateX(0deg); opacity: 1; }
+    50% { transform: rotateX(90deg); opacity: 0; }
+    100% { transform: rotateX(0deg); opacity: 1; }
+  }
+
+  .cell-label {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cell-flight {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  .cell-route {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--text);
+    opacity: 0.7;
+    letter-spacing: 1px;
+  }
+
+  .cell-departs {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .cell-gate {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--muted);
+    letter-spacing: 2px;
+  }
+
+  .flight-status {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid currentColor;
+    display: inline-block;
+  }
+
+  .status-on-time    { color: var(--green); }
+  .status-delayed    { color: var(--yellow); }
+  .status-cancelled  { color: var(--red); }
+  .status-boarding   { color: var(--accent); animation: boardingPulse 1.5s infinite; }
+  .status-departed   { color: var(--blue); }
+  .status-landed     { color: var(--muted); }
+  .status-scheduled  { color: var(--muted); }
+
+  @keyframes boardingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .cell-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .btn-icon {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+  .btn-icon:hover { border-color: var(--red); color: var(--red); }
+
+  /* Modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--accent-dim);
+    padding: 36px;
+    width: 480px;
+    max-width: 95vw;
+    animation: modalIn 0.2s ease;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .modal h2 {
+    font-family: var(--sans);
+    font-weight: 900;
+    font-size: 22px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 28px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    display: block;
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .form-group input, .form-group select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    font-family: var(--mono);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    border-color: var(--accent);
+  }
+  .form-group select option { background: var(--bg); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 28px;
+    justify-content: flex-end;
+  }
+
+  .btn-cancel {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 24px;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-cancel:hover { border-color: var(--text); color: var(--text); }
+
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    color: #000;
+    padding: 8px 24px;
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-save:hover { background: #f5b840; }
+
+  .last-updated {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 16px;
+    letter-spacing: 1px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .toolbar-left {
+    font-family: var(--sans);
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .api-notice {
+    background: #1a1200;
+    border: 1px solid var(--accent-dim);
+    padding: 10px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-dim);
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  @media (max-width: 700px) {
+    .board-header { display: none; }
+    .flight-row {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 8px;
+    }
+    header { padding: 12px 16px; }
+    .logo { font-size: 20px; letter-spacing: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Flight<span>///</span>Watch</div>
+  <div class="header-right">
+    <div class="live-indicator">
+      <div class="live-dot"></div>
+      <span>Demo Mode</span>
+    </div>
+    <div id="clock">--:--:--</div>
+    <button class="btn-refresh" id="btn-refresh" onclick="manualRefresh()">
+      <span class="spin">⟳</span> Refresh
+    </button>
+    <button class="btn-add" onclick="openModal()">+ Add Flight</button>
+  </div>
+</header>
+
+<main>
+  <div class="api-notice">
+    ⚠ &nbsp; DEMO MODE — statuses are simulated. Replace <code>fetchFlightStatus()</code> with a live API call when ready.
+  </div>
+
+  <div class="toolbar">
+    <div class="toolbar-left" id="flight-count">0 flights tracked</div>
+  </div>
+
+  <div class="board-header">
+    <div>Label</div>
+    <div>Flight</div>
+    <div>Gate</div>
+    <div>Status</div>
+    <div></div>
+  </div>
+
+  <div id="flight-list"></div>
+
+  <div class="last-updated" id="last-updated"></div>
+</main>
+
+<!-- Add Flight Modal -->
+<div class="modal-backdrop" id="modal" onclick="closeModalIfBackdrop(event)">
+  <div class="modal">
+    <h2>Add Flight</h2>
+    <div class="form-group">
+      <label>Custom Label</label>
+      <input type="text" id="f-label" placeholder="e.g. Dad's Flight, Team Arrival" maxlength="30">
+    </div>
+    <div class="form-group">
+      <label>Airline</label>
+      <select id="f-airline">
+        <option value="">— Select Airline —</option>
+        <optgroup label="Major US">
+          <option value="AA">AA — American Airlines</option>
+          <option value="DL">DL — Delta Air Lines</option>
+          <option value="UA">UA — United Airlines</option>
+          <option value="WN">WN — Southwest Airlines</option>
+          <option value="B6">B6 — JetBlue Airways</option>
+          <option value="AS">AS — Alaska Airlines</option>
+          <option value="F9">F9 — Frontier Airlines</option>
+          <option value="NK">NK — Spirit Airlines</option>
+          <option value="G4">G4 — Allegiant Air</option>
+          <option value="SY">SY — Sun Country Airlines</option>
+        </optgroup>
+        <optgroup label="International">
+          <option value="AC">AC — Air Canada</option>
+          <option value="AF">AF — Air France</option>
+          <option value="BA">BA — British Airways</option>
+          <option value="EK">EK — Emirates</option>
+          <option value="LH">LH — Lufthansa</option>
+          <option value="QR">QR — Qatar Airways</option>
+          <option value="SQ">SQ — Singapore Airlines</option>
+          <option value="CX">CX — Cathay Pacific</option>
+          <option value="JL">JL — Japan Airlines</option>
+          <option value="NH">NH — ANA</option>
+          <option value="KL">KL — KLM</option>
+          <option value="IB">IB — Iberia</option>
+          <option value="TK">TK — Turkish Airlines</option>
+          <option value="VS">VS — Virgin Atlantic</option>
+        </optgroup>
+        <optgroup label="Regional / Other">
+          <option value="9X">9X — Southern Airways Express</option>
+          <option value="MQ">MQ — Envoy Air (AA regional)</option>
+          <option value="OO">OO — SkyWest Airlines</option>
+          <option value="YX">YX — Republic Airways</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Flight Number</label>
+      <div style="display:flex;gap:0;align-items:center;">
+        <div id="airline-preview" style="
+          background:var(--bg);border:1px solid var(--border);border-right:none;
+          padding:10px 12px;font-family:var(--mono);font-size:14px;
+          color:var(--accent);min-width:44px;text-align:center;letter-spacing:1px;
+        ">—</div>
+        <input type="number" id="f-number" placeholder="e.g. 1234" min="1" max="9999"
+          style="flex:1;border-left:none;" oninput="updatePreview()">
+      </div>
+      <div id="flight-preview-line" style="
+        margin-top:6px;font-family:var(--mono);font-size:12px;
+        color:var(--muted);letter-spacing:2px;
+      "></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="addFlight()">Save Flight</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Storage ───────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'flightwatch_flights';
+
+function loadFlights() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function saveFlights(flights) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(flights));
+}
+
+// ─── Mock Status Engine ─────────────────────────────────────────────────────
+// When you have a real API key, replace this function.
+// It should return an object: { status, gate, delay }
+// status: 'scheduled' | 'on-time' | 'boarding' | 'departed' | 'delayed' | 'cancelled' | 'landed'
+
+const STATUS_WEIGHTS = [
+  { status: 'on-time',   weight: 40 },
+  { status: 'scheduled', weight: 20 },
+  { status: 'boarding',  weight: 15 },
+  { status: 'delayed',   weight: 12 },
+  { status: 'departed',  weight: 8  },
+  { status: 'landed',    weight: 4  },
+  { status: 'cancelled', weight: 1  },
+];
+
+function weightedRandom(options) {
+  const total = options.reduce((s, o) => s + o.weight, 0);
+  let r = Math.random() * total;
+  for (const o of options) { r -= o.weight; if (r <= 0) return o.status; }
+  return options[0].status;
+}
+
+// Seeded per-flight so status is consistent between refreshes in demo mode
+// but drifts slowly to simulate real changes
+const flightSeeds = {};
+
+async function fetchFlightStatus(flight) {
+  // === REPLACE THIS FUNCTION WITH A REAL API CALL ===
+  // Example with AviationStack:
+  //
+  // const res = await fetch(
+  //   `http://api.aviationstack.com/v1/flights?access_key=YOUR_KEY&flight_iata=${flight.number}`
+  // );
+  // const data = await res.json();
+  // const f = data.data?.[0];
+  // return {
+  //   status: f?.flight_status || 'scheduled',
+  //   gate: f?.departure?.gate || flight.gate,
+  //   delay: f?.departure?.delay || 0
+  // };
+
+  // --- MOCK LOGIC ---
+  await new Promise(r => setTimeout(r, 80 + Math.random() * 120)); // fake latency
+
+  if (!flightSeeds[flight.id]) {
+    flightSeeds[flight.id] = { status: weightedRandom(STATUS_WEIGHTS), ticks: 0 };
+  }
+  const seed = flightSeeds[flight.id];
+  seed.ticks++;
+
+  // Occasionally drift status
+  if (seed.ticks % 4 === 0 && Math.random() < 0.25) {
+    seed.status = weightedRandom(STATUS_WEIGHTS);
+  }
+
+  return {
+    status: seed.status,
+    gate: flight.gate || (seed.status !== 'cancelled' ? `${String.fromCharCode(65 + Math.floor(Math.random()*5))}${Math.floor(Math.random()*30)+1}` : '—'),
+    delay: seed.status === 'delayed' ? Math.floor(Math.random() * 6 + 1) * 15 : 0
+  };
+}
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let flights = loadFlights();
+let liveData = {}; // { id: { status, gate, delay } }
+let refreshInterval;
+
+// ─── Render ─────────────────────────────────────────────────────────────────
+function statusClass(status) {
+  const map = {
+    'on-time':   'status-on-time',
+    'delayed':   'status-delayed',
+    'cancelled': 'status-cancelled',
+    'boarding':  'status-boarding',
+    'departed':  'status-departed',
+    'landed':    'status-landed',
+    'scheduled': 'status-scheduled',
+  };
+  return map[status] || 'status-scheduled';
+}
+
+function statusLabel(status, delay) {
+  if (status === 'delayed' && delay) return `DELAYED +${delay}m`;
+  return status.toUpperCase();
+}
+
+function renderFlights() {
+  const list = document.getElementById('flight-list');
+  const count = document.getElementById('flight-count');
+  count.textContent = `${flights.length} flight${flights.length !== 1 ? 's' : ''} tracked`;
+
+  if (flights.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <span class="big">✈</span>
+      No flights tracked yet<br>
+      <small style="font-size:12px;margin-top:8px;display:block">Click + ADD FLIGHT to get started</small>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = flights.map(f => {
+    const live = liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 };
+    const sc = statusClass(live.status);
+    const sl = statusLabel(live.status, live.delay);
+    const gate = live.gate || '—';
+
+    return `<div class="flight-row" id="row-${f.id}">
+      <div class="cell-label" title="${f.label}">${f.label}</div>
+      <div class="cell-flight">${f.number.toUpperCase()}</div>
+      <div class="cell-gate">${gate}</div>
+      <div class="flight-status ${sc}">${sl}</div>
+      <div class="cell-actions">
+        <button class="btn-icon" title="Remove" onclick="removeFlight('${f.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── Refresh ─────────────────────────────────────────────────────────────────
+let isRefreshing = false;
+
+async function refreshAll() {
+  if (flights.length === 0 || isRefreshing) return;
+  isRefreshing = true;
+
+  const btn = document.getElementById('btn-refresh');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; }
+
+  const updates = await Promise.all(
+    flights.map(async f => {
+      const data = await fetchFlightStatus(f);
+      return { id: f.id, data };
+    })
+  );
+
+  updates.forEach(({ id, data }) => {
+    const prev = liveData[id];
+    liveData[id] = data;
+    if (prev && prev.status !== data.status) {
+      const row = document.getElementById(`row-${id}`);
+      if (row) {
+        row.classList.add('updating');
+        setTimeout(() => row.classList.remove('updating'), 500);
+      }
+    }
+  });
+
+  renderFlights();
+
+  const now = new Date();
+  document.getElementById('last-updated').textContent =
+    `Last updated: ${now.toLocaleTimeString()}`;
+
+  isRefreshing = false;
+  if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+}
+
+function manualRefresh() { refreshAll(); }
+
+// ─── Clock ───────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', {
+    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── Airline preview ─────────────────────────────────────────────────────────
+function updatePreview() {
+  const airline = document.getElementById('f-airline').value;
+  const num = document.getElementById('f-number').value;
+  document.getElementById('airline-preview').textContent = airline || '—';
+  const preview = document.getElementById('flight-preview-line');
+  preview.textContent = airline && num ? `Flight: ${airline}${num}` : '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('f-airline').addEventListener('change', updatePreview);
+});
+
+// ─── Add / Remove ────────────────────────────────────────────────────────────
+function addFlight() {
+  const label   = document.getElementById('f-label').value.trim();
+  const airline = document.getElementById('f-airline').value;
+  const num     = document.getElementById('f-number').value.trim();
+
+  const labelEl   = document.getElementById('f-label');
+  const airlineEl = document.getElementById('f-airline');
+  const numEl     = document.getElementById('f-number');
+
+  labelEl.style.borderColor   = '';
+  airlineEl.style.borderColor = '';
+  numEl.style.borderColor     = '';
+
+  let valid = true;
+  if (!label)   { labelEl.style.borderColor   = 'var(--red)'; valid = false; }
+  if (!airline) { airlineEl.style.borderColor = 'var(--red)'; valid = false; }
+  if (!num)     { numEl.style.borderColor     = 'var(--red)'; valid = false; }
+  if (!valid) return;
+
+  const flight = {
+    id: Date.now().toString(),
+    label,
+    number: `${airline}${num}`,
+  };
+
+  flights.push(flight);
+  saveFlights(flights);
+  closeModal();
+  renderFlights();
+  refreshAll();
+}
+
+function removeFlight(id) {
+  flights = flights.filter(f => f.id !== id);
+  delete liveData[id];
+  delete flightSeeds[id];
+  saveFlights(flights);
+  renderFlights();
+}
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('f-label').value   = '';
+  document.getElementById('f-airline').value = '';
+  document.getElementById('f-number').value  = '';
+  document.getElementById('airline-preview').textContent = '—';
+  document.getElementById('flight-preview-line').textContent = '';
+  ['f-label','f-airline','f-number'].forEach(id =>
+    document.getElementById(id).style.borderColor = ''
+  );
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('f-label').focus();
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+function closeModalIfBackdrop(e) {
+  if (e.target === document.getElementById('modal')) closeModal();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && document.getElementById('modal').classList.contains('open')) addFlight();
+});
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+renderFlights();
+refreshAll();
+</script>
+</body>
+</html>
