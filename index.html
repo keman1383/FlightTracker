@@ -652,9 +652,7 @@ const res  = await fetch(url);
 
   const f = data?.data?.[0];
 if (!f) return { status: 'scheduled', gate: '—', delay: 0 };
-document.getElementById('last-updated').textContent = `ARRIVAL: ${JSON.stringify(f?.arrival)}`;
-throw new Error('stop here'); 
-  const status    = normalizeStatus(f.flight_status);
+const status    = normalizeStatus(f.flight_status);
 const gate      = f.departure?.gate || '—';
 const delay     = f.departure?.delay || 0;
 const scheduled = f.arrival?.scheduled || null;
@@ -768,7 +766,14 @@ const toFetch = flights.filter(f => {
   const minsUntil = (dep - now) / 60000;
   return minsUntil <= 120;
 });
-  
+
+  if (toFetch.length === 0) {
+    renderFlights();
+    isRefreshing = false;
+    return;
+  }
+
+  isRefreshing = true;  
   isRefreshing = true;
   const btn = document.getElementById('btn-refresh');
   if (btn) { btn.classList.add('loading'); btn.disabled = true; }
@@ -780,7 +785,6 @@ const toFetch = flights.filter(f => {
         return { id: f.id, data, ok: true };
       } catch (e) {
         console.error(`Failed to fetch ${f.number}:`, e);
-document.getElementById('last-updated').textContent = `ERROR: ${e.message}`;
         return { id: f.id, data: liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 }, ok: false };
       }
     })
