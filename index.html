@@ -628,7 +628,7 @@ function renderCallCount() {
 }
 
 // ─── AviationStack API ────────────────────────────────────────────────────
-const API_KEY = '443a2dfb234959485a67d51109c6aebe';
+
 
 // Normalize AviationStack status strings to our internal set
 function normalizeStatus(raw) {
@@ -644,8 +644,8 @@ function normalizeStatus(raw) {
 }
 
 async function fetchFlightStatus(flight) {
-  const url = `http://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${flight.number}`;
-  const res  = await fetch(url);
+  const url = `https://flightwatch-proxy.yourname.workers.dev?flight_iata=${flight.number}`;
+const res  = await fetch(url);
   const data = await res.json();
   incrementCallCount();
 
