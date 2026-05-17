@@ -644,7 +644,7 @@ function normalizeStatus(raw) {
 }
 
 async function fetchFlightStatus(flight) {
-  const url = `https://flightwatch-proxy.yourname.workers.dev?flight_iata=${flight.number}`;
+  const url = `https://flightwatch-proxy.josh-blakely.workers.dev/`;
 const res  = await fetch(url);
   const data = await res.json();
   incrementCallCount();
