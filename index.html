@@ -805,7 +805,6 @@ function updateClock() {
   });
 }
 setInterval(updateClock, 1000);
-updateClock();
 
 // ─── Airline preview ──────────────────────────────────────────────────────
 function updatePreview() {
@@ -885,9 +884,13 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────
-renderFlights();
-renderCallCount();
-refreshAll();
+// ─── Init ─────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  renderFlights();
+  renderCallCount();
+  refreshAll();
+  updateClock();
+});
 </script>
 </body>
 </html>
