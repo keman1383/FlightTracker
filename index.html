@@ -652,6 +652,7 @@ const res  = await fetch(url);
 
   const f = data?.data?.[0];
 if (!f) return { status: 'scheduled', gate: '—', delay: 0 };
+document.getElementById('last-updated').textContent = `ARRIVAL: ${JSON.stringify(f?.arrival)}`;
   
   const status    = normalizeStatus(f.flight_status);
 const gate      = f.departure?.gate || '—';
