@@ -154,7 +154,7 @@
   /* Board header */
   .board-header {
     display: grid;
-    grid-template-columns: 1fr 130px 110px 130px 48px;
+    grid-template-columns: 1fr 130px 110px 140px 130px 48px;
     gap: 0;
     padding: 8px 20px;
     border-bottom: 1px solid var(--accent-dim);
@@ -499,6 +499,7 @@
     <div>Label</div>
     <div>Flight</div>
     <div>Gate</div>
+    <div>Arrives</div>
     <div>Status</div>
     <div></div>
   </div>
@@ -653,10 +654,17 @@ const res  = await fetch(url);
 document.getElementById('last-updated').textContent = `API response: ${JSON.stringify(data).slice(0, 100)}`;
 if (!f) return { status: 'scheduled', gate: '—', delay: 0 };
   
-  const status = normalizeStatus(f.flight_status);
-  const gate   = f.departure?.gate || '—';
-  const delay  = f.departure?.delay || 0;
-  return { status, gate, delay };
+  const status    = normalizeStatus(f.flight_status);
+const gate      = f.departure?.gate || '—';
+const delay     = f.departure?.delay || 0;
+const scheduled = f.arrival?.scheduled || null;
+const estimated = f.arrival?.estimated || null;
+const useEstimated = ['active', 'landed'].includes(f.flight_status?.toLowerCase());
+const arrivalRaw = (useEstimated && estimated) ? estimated : scheduled;
+const arrival = arrivalRaw
+  ? new Date(arrivalRaw).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+  : '—';
+return { status, gate, delay, arrival };
 }
 
 // ─── State ────────────────────────────────────────────────────────────────
@@ -726,6 +734,7 @@ const live = withinWindow
     const sc      = statusClass(live.status);
     const sl      = statusLabel(live.status, live.delay);
     const gate    = live.gate || '—';
+    const arrival = live.arrival || '—';
     const isLanded = landedIds.has(f.id);
     const rowStyle = isLanded ? 'opacity:0.45;' : '';
 
@@ -733,6 +742,7 @@ const live = withinWindow
       <div class="cell-label" title="${f.label}">${f.label}</div>
       <div class="cell-flight">${f.number.toUpperCase()}</div>
       <div class="cell-gate">${gate}</div>
+      <div class="cell-departs">${arrival}</div>
       <div class="flight-status ${sc}">${sl}</div>
       <div class="cell-actions">
         <button class="btn-icon" title="Remove" onclick="removeFlight('${f.id}')">✕</button>
