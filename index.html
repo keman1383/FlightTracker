@@ -466,7 +466,7 @@
   <div class="header-right">
     <div class="live-indicator">
       <div class="live-dot"></div>
-      <span>Demo Mode</span>
+      <span>Live</span>
     </div>
     <div id="clock">--:--:--</div>
     <button class="btn-refresh" id="btn-refresh" onclick="manualRefresh()">
@@ -477,12 +477,9 @@
 </header>
 
 <main>
-  <div class="api-notice">
-    ⚠ &nbsp; DEMO MODE — statuses are simulated. Replace <code>fetchFlightStatus()</code> with a live API call when ready.
-  </div>
-
   <div class="toolbar">
     <div class="toolbar-left" id="flight-count">0 flights tracked</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:1px;" id="call-count">API calls this month: 0 / 100</div>
   </div>
 
   <div class="board-header">
@@ -571,105 +568,118 @@
 
 <script>
 // ─── Storage ───────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'flightwatch_flights';
+const STORAGE_KEY      = 'flightwatch_flights';
+const LANDED_KEY       = 'flightwatch_landed';   // set of ids that have landed
+const CALL_COUNT_KEY   = 'flightwatch_calls';
 
 function loadFlights() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
   catch { return []; }
 }
-
-function saveFlights(flights) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(flights));
+function saveFlights(f) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(f));
+}
+function loadLanded() {
+  try { return new Set(JSON.parse(localStorage.getItem(LANDED_KEY)) || []); }
+  catch { return new Set(); }
+}
+function saveLanded(s) {
+  localStorage.setItem(LANDED_KEY, JSON.stringify([...s]));
 }
 
-// ─── Mock Status Engine ─────────────────────────────────────────────────────
-// When you have a real API key, replace this function.
-// It should return an object: { status, gate, delay }
-// status: 'scheduled' | 'on-time' | 'boarding' | 'departed' | 'delayed' | 'cancelled' | 'landed'
-
-const STATUS_WEIGHTS = [
-  { status: 'on-time',   weight: 40 },
-  { status: 'scheduled', weight: 20 },
-  { status: 'boarding',  weight: 15 },
-  { status: 'delayed',   weight: 12 },
-  { status: 'departed',  weight: 8  },
-  { status: 'landed',    weight: 4  },
-  { status: 'cancelled', weight: 1  },
-];
-
-function weightedRandom(options) {
-  const total = options.reduce((s, o) => s + o.weight, 0);
-  let r = Math.random() * total;
-  for (const o of options) { r -= o.weight; if (r <= 0) return o.status; }
-  return options[0].status;
+// ─── Call counter ─────────────────────────────────────────────────────────
+function getCallCount() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CALL_COUNT_KEY));
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+    if (stored && stored.month === monthKey) return stored.count;
+    return 0;
+  } catch { return 0; }
+}
+function incrementCallCount() {
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${now.getMonth()}`;
+  const count = getCallCount() + 1;
+  localStorage.setItem(CALL_COUNT_KEY, JSON.stringify({ month: monthKey, count }));
+  renderCallCount();
+}
+function renderCallCount() {
+  const el = document.getElementById('call-count');
+  if (el) el.textContent = `API calls this month: ${getCallCount()} / 100`;
 }
 
-// Seeded per-flight so status is consistent between refreshes in demo mode
-// but drifts slowly to simulate real changes
-const flightSeeds = {};
+// ─── AviationStack API ────────────────────────────────────────────────────
+const API_KEY = '443a2dfb234959485a67d51109c6aebe';
+
+// Normalize AviationStack status strings to our internal set
+function normalizeStatus(raw) {
+  if (!raw) return 'scheduled';
+  const s = raw.toLowerCase();
+  if (s === 'landed')    return 'landed';
+  if (s === 'active')    return 'in-air';
+  if (s === 'scheduled') return 'scheduled';
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'incident')  return 'cancelled';
+  if (s === 'diverted')  return 'delayed';
+  return 'scheduled';
+}
 
 async function fetchFlightStatus(flight) {
-  // === REPLACE THIS FUNCTION WITH A REAL API CALL ===
-  // Example with AviationStack:
-  //
-  // const res = await fetch(
-  //   `http://api.aviationstack.com/v1/flights?access_key=YOUR_KEY&flight_iata=${flight.number}`
-  // );
-  // const data = await res.json();
-  // const f = data.data?.[0];
-  // return {
-  //   status: f?.flight_status || 'scheduled',
-  //   gate: f?.departure?.gate || flight.gate,
-  //   delay: f?.departure?.delay || 0
-  // };
+  const url = `http://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${flight.number}`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  incrementCallCount();
 
-  // --- MOCK LOGIC ---
-  await new Promise(r => setTimeout(r, 80 + Math.random() * 120)); // fake latency
+  const f = data?.data?.[0];
+  if (!f) return { status: 'scheduled', gate: '—', delay: 0 };
 
-  if (!flightSeeds[flight.id]) {
-    flightSeeds[flight.id] = { status: weightedRandom(STATUS_WEIGHTS), ticks: 0 };
-  }
-  const seed = flightSeeds[flight.id];
-  seed.ticks++;
-
-  // Occasionally drift status
-  if (seed.ticks % 4 === 0 && Math.random() < 0.25) {
-    seed.status = weightedRandom(STATUS_WEIGHTS);
-  }
-
-  return {
-    status: seed.status,
-    gate: flight.gate || (seed.status !== 'cancelled' ? `${String.fromCharCode(65 + Math.floor(Math.random()*5))}${Math.floor(Math.random()*30)+1}` : '—'),
-    delay: seed.status === 'delayed' ? Math.floor(Math.random() * 6 + 1) * 15 : 0
-  };
+  const status = normalizeStatus(f.flight_status);
+  const gate   = f.departure?.gate || '—';
+  const delay  = f.departure?.delay || 0;
+  return { status, gate, delay };
 }
 
-// ─── State ──────────────────────────────────────────────────────────────────
-let flights = loadFlights();
-let liveData = {}; // { id: { status, gate, delay } }
-let refreshInterval;
+// ─── State ────────────────────────────────────────────────────────────────
+let flights    = loadFlights();
+let landedIds  = loadLanded();   // flights that have landed — skip API calls
+let liveData   = {};             // { id: { status, gate, delay } }
 
-// ─── Render ─────────────────────────────────────────────────────────────────
+// Pre-populate liveData for already-landed flights so they render correctly
+landedIds.forEach(id => {
+  liveData[id] = { status: 'landed', gate: '—', delay: 0 };
+});
+
+// ─── Render ───────────────────────────────────────────────────────────────
 function statusClass(status) {
   const map = {
+    'scheduled': 'status-scheduled',
     'on-time':   'status-on-time',
+    'in-air':    'status-departed',
+    'boarding':  'status-boarding',
     'delayed':   'status-delayed',
     'cancelled': 'status-cancelled',
-    'boarding':  'status-boarding',
-    'departed':  'status-departed',
     'landed':    'status-landed',
-    'scheduled': 'status-scheduled',
   };
   return map[status] || 'status-scheduled';
 }
 
 function statusLabel(status, delay) {
   if (status === 'delayed' && delay) return `DELAYED +${delay}m`;
-  return status.toUpperCase();
+  const labels = {
+    'scheduled': 'SCHEDULED',
+    'on-time':   'ON TIME',
+    'in-air':    'IN AIR',
+    'boarding':  'BOARDING',
+    'delayed':   'DELAYED',
+    'cancelled': 'CANCELLED',
+    'landed':    'LANDED',
+  };
+  return labels[status] || status.toUpperCase();
 }
 
 function renderFlights() {
-  const list = document.getElementById('flight-list');
+  const list  = document.getElementById('flight-list');
   const count = document.getElementById('flight-count');
   count.textContent = `${flights.length} flight${flights.length !== 1 ? 's' : ''} tracked`;
 
@@ -683,12 +693,14 @@ function renderFlights() {
   }
 
   list.innerHTML = flights.map(f => {
-    const live = liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 };
-    const sc = statusClass(live.status);
-    const sl = statusLabel(live.status, live.delay);
-    const gate = live.gate || '—';
+    const live    = liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 };
+    const sc      = statusClass(live.status);
+    const sl      = statusLabel(live.status, live.delay);
+    const gate    = live.gate || '—';
+    const isLanded = landedIds.has(f.id);
+    const rowStyle = isLanded ? 'opacity:0.45;' : '';
 
-    return `<div class="flight-row" id="row-${f.id}">
+    return `<div class="flight-row" id="row-${f.id}" style="${rowStyle}">
       <div class="cell-label" title="${f.label}">${f.label}</div>
       <div class="cell-flight">${f.number.toUpperCase()}</div>
       <div class="cell-gate">${gate}</div>
@@ -700,26 +712,46 @@ function renderFlights() {
   }).join('');
 }
 
-// ─── Refresh ─────────────────────────────────────────────────────────────────
+// ─── Refresh ──────────────────────────────────────────────────────────────
 let isRefreshing = false;
 
 async function refreshAll() {
-  if (flights.length === 0 || isRefreshing) return;
-  isRefreshing = true;
+  if (isRefreshing) return;
 
+  // Only fetch for flights that haven't landed
+  const toFetch = flights.filter(f => !landedIds.has(f.id));
+  if (toFetch.length === 0) {
+    renderFlights();
+    return;
+  }
+
+  isRefreshing = true;
   const btn = document.getElementById('btn-refresh');
   if (btn) { btn.classList.add('loading'); btn.disabled = true; }
 
   const updates = await Promise.all(
-    flights.map(async f => {
-      const data = await fetchFlightStatus(f);
-      return { id: f.id, data };
+    toFetch.map(async f => {
+      try {
+        const data = await fetchFlightStatus(f);
+        return { id: f.id, data, ok: true };
+      } catch (e) {
+        console.error(`Failed to fetch ${f.number}:`, e);
+        return { id: f.id, data: liveData[f.id] || { status: 'scheduled', gate: '—', delay: 0 }, ok: false };
+      }
     })
   );
 
   updates.forEach(({ id, data }) => {
     const prev = liveData[id];
     liveData[id] = data;
+
+    // If newly landed, freeze it — no more API calls
+    if (data.status === 'landed' && !landedIds.has(id)) {
+      landedIds.add(id);
+      saveLanded(landedIds);
+    }
+
+    // Flash row on status change
     if (prev && prev.status !== data.status) {
       const row = document.getElementById(`row-${id}`);
       if (row) {
@@ -730,6 +762,7 @@ async function refreshAll() {
   });
 
   renderFlights();
+  renderCallCount();
 
   const now = new Date();
   document.getElementById('last-updated').textContent =
@@ -741,7 +774,7 @@ async function refreshAll() {
 
 function manualRefresh() { refreshAll(); }
 
-// ─── Clock ───────────────────────────────────────────────────────────────────
+// ─── Clock ────────────────────────────────────────────────────────────────
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent = now.toLocaleTimeString('en-US', {
@@ -751,20 +784,20 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// ─── Airline preview ─────────────────────────────────────────────────────────
+// ─── Airline preview ──────────────────────────────────────────────────────
 function updatePreview() {
   const airline = document.getElementById('f-airline').value;
-  const num = document.getElementById('f-number').value;
+  const num     = document.getElementById('f-number').value;
   document.getElementById('airline-preview').textContent = airline || '—';
-  const preview = document.getElementById('flight-preview-line');
-  preview.textContent = airline && num ? `Flight: ${airline}${num}` : '';
+  document.getElementById('flight-preview-line').textContent =
+    airline && num ? `Flight: ${airline}${num}` : '';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('f-airline').addEventListener('change', updatePreview);
 });
 
-// ─── Add / Remove ────────────────────────────────────────────────────────────
+// ─── Add / Remove ─────────────────────────────────────────────────────────
 function addFlight() {
   const label   = document.getElementById('f-label').value.trim();
   const airline = document.getElementById('f-airline').value;
@@ -774,9 +807,7 @@ function addFlight() {
   const airlineEl = document.getElementById('f-airline');
   const numEl     = document.getElementById('f-number');
 
-  labelEl.style.borderColor   = '';
-  airlineEl.style.borderColor = '';
-  numEl.style.borderColor     = '';
+  labelEl.style.borderColor = airlineEl.style.borderColor = numEl.style.borderColor = '';
 
   let valid = true;
   if (!label)   { labelEl.style.borderColor   = 'var(--red)'; valid = false; }
@@ -784,12 +815,7 @@ function addFlight() {
   if (!num)     { numEl.style.borderColor     = 'var(--red)'; valid = false; }
   if (!valid) return;
 
-  const flight = {
-    id: Date.now().toString(),
-    label,
-    number: `${airline}${num}`,
-  };
-
+  const flight = { id: Date.now().toString(), label, number: `${airline}${num}` };
   flights.push(flight);
   saveFlights(flights);
   closeModal();
@@ -799,19 +825,21 @@ function addFlight() {
 
 function removeFlight(id) {
   flights = flights.filter(f => f.id !== id);
+  landedIds.delete(id);
   delete liveData[id];
-  delete flightSeeds[id];
   saveFlights(flights);
+  saveLanded(landedIds);
   renderFlights();
+  renderCallCount();
 }
 
-// ─── Modal ───────────────────────────────────────────────────────────────────
+// ─── Modal ────────────────────────────────────────────────────────────────
 function openModal() {
   document.getElementById('f-label').value   = '';
   document.getElementById('f-airline').value = '';
   document.getElementById('f-number').value  = '';
-  document.getElementById('airline-preview').textContent = '—';
-  document.getElementById('flight-preview-line').textContent = '';
+  document.getElementById('airline-preview').textContent        = '—';
+  document.getElementById('flight-preview-line').textContent    = '';
   ['f-label','f-airline','f-number'].forEach(id =>
     document.getElementById(id).style.borderColor = ''
   );
@@ -832,8 +860,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('modal').classList.contains('open')) addFlight();
 });
 
-// ─── Init ────────────────────────────────────────────────────────────────────
+// ─── Init ─────────────────────────────────────────────────────────────────
 renderFlights();
+renderCallCount();
 refreshAll();
 </script>
 </body>
